@@ -1,0 +1,71 @@
+import fitz  # PyMuPDF
+from pypdf import PdfReader, PdfWriter
+
+PDF_INPUT = "book.pdf"
+TXT_INPUT = "bookmark_titles.txt"
+PDF_OUTPUT = "book_with_bookmarks.pdf"
+
+# Read bookmark titles
+bookmarks = []
+
+with open(TXT_INPUT, "r", encoding="utf-8") as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+
+        level, title = line.split("|", 1)
+        bookmarks.append((int(level.strip()), title.strip()))
+
+
+# Search PDF pages
+doc = fitz.open(PDF_INPUT)
+
+found_bookmarks = []
+
+for level, title in bookmarks:
+    found_page = None
+
+    for page_index in range(len(doc)):
+        page = doc[page_index]
+        text = page.get_text("text")
+
+        if title.lower() in text.lower():
+            found_page = page_index
+            break
+
+    if found_page is not None:
+        found_bookmarks.append((level, title, found_page))
+        print("Found:", title, "-> PDF page", found_page + 1)
+    else:
+        print("NOT FOUND:", title)
+
+
+# Add bookmarks
+reader = PdfReader(PDF_INPUT)
+writer = PdfWriter()
+
+for page in reader.pages:
+    writer.add_page(page)
+
+parents = {}
+
+for level, title, page_index in found_bookmarks:
+    parent = parents.get(level - 1)
+
+    bookmark = writer.add_outline_item(
+        title=title,
+        page_number=page_index,
+        parent=parent
+    )
+
+    parents[level] = bookmark
+
+    for k in list(parents.keys()):
+        if k > level:
+            del parents[k]
+
+with open(PDF_OUTPUT, "wb") as f:
+    writer.write(f)
+
+print("Done:", PDF_OUTPUT)
